@@ -1,7 +1,7 @@
 package examples
-import com.googlecode.scalascriptengine.ScalaScriptEngine
 import java.io.File
 import org.scala_tools.time.Imports._
+import org.scommon.script.engine.ScalaScriptEngine
 
 /**
  * demonstrates the timed refresh policy. A background thread scans the

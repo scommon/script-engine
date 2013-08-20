@@ -1,6 +1,6 @@
 package test
 
-import com.googlecode.scalascriptengine.TestClassTrait
+import org.scommon.script.engine.TestClassTrait
 import java.io.File
 
 class TryFile extends TestClassTrait {

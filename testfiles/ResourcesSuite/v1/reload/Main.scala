@@ -1,6 +1,6 @@
 package reload
 
-import com.googlecode.scalascriptengine.TestClassTrait
+import org.scommon.script.engine.TestClassTrait
 import scala.io.Source
 class Main extends TestClassTrait
 {

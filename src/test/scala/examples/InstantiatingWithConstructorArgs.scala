@@ -1,6 +1,6 @@
 package examples
-import com.googlecode.scalascriptengine.ScalaScriptEngine
 import java.io.File
+import org.scommon.script.engine.ScalaScriptEngine
 
 /**
  * This example instantiates a dynamically loaded class with

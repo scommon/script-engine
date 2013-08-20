@@ -1,4 +1,4 @@
-package com.googlecode.scalascriptengine
+package org.scommon.script.engine
 
 import org.scala_tools.time.Imports._
 import java.util.concurrent.atomic.AtomicBoolean
@@ -15,7 +15,7 @@ class CompilationStatus private (val startTime: DateTime, val stopTime: Option[D
 		case ScanningSources | Compiling => stopTrigger.set(true)
 	}
 	def stopIfCompiling: Unit = stopTrigger.set(true)
-	private[scalascriptengine] def checkStop: Unit = if (stopTrigger.get) throw new CompilationStopped
+	private[script] def checkStop: Unit = if (stopTrigger.get) throw new CompilationStopped
 }
 
 object CompilationStatus {

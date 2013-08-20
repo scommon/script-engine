@@ -1,6 +1,6 @@
 package test
 
-import com.googlecode.scalascriptengine.TestClassTrait
+import org.scommon.script.engine.TestClassTrait
 
 
 class B extends TestClassTrait {

@@ -1,8 +1,10 @@
 package examples
 
 import java.io.File
-import com.googlecode.scalascriptengine._
-import com.googlecode.scalascriptengine.Config
+import org.scommon.script._
+import org.scommon.script.engine._
+import org.scommon.script.engine.SourcePath
+import org.scommon.script.engine.Config
 
 /**
  * This example shows how to instantiate the script engine without using the factory

@@ -1,7 +1,5 @@
 package test
-import com.googlecode.scalascriptengine.TestClassTrait
-import com.googlecode.scalascriptengine.TestParamTrait
-import com.googlecode.scalascriptengine.TestValTrait
+import org.scommon.script.engine.{TestValTrait, TestParamTrait, TestClassTrait}
 
 /**
  * used to test the scala class loader. Please comment out after

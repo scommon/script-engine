@@ -1,4 +1,5 @@
-package com.googlecode.scalascriptengine
+package org.scommon.script.engine
+
 import scala.tools.nsc.plugins.PluginComponent
 import scala.tools.nsc.Global
 import scala.tools.nsc.Phase
@@ -15,7 +16,7 @@ class CompilationPlugins(global: Global, sse: ScalaScriptEngine) {
 	import global._
 
 	val name = "compilation-plugins"
-	val description = "scalascriptengine compilation plugins"
+	val description = "script compilation plugins"
 	val components = List[PluginComponent](Component)
 
 	/**

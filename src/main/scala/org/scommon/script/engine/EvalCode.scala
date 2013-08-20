@@ -1,4 +1,4 @@
-package com.googlecode.scalascriptengine
+package org.scommon.script.engine
 
 import java.io.File
 import java.util.UUID
@@ -79,7 +79,7 @@ trait EvalCode[T] {
 }
 
 object EvalCode {
-	private[scalascriptengine] val typesToName = Map[Class[_], String](
+	private[script] val typesToName = Map[Class[_], String](
 		classOf[Int] -> "Int",
 		classOf[Float] -> "Float",
 		classOf[Double] -> "Double",
