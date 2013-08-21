@@ -2,52 +2,83 @@ package org.scommon.script.engine.core
 
 import java.io.File
 import java.nio.file._
+import java.nio.file.WatchEvent.Kind
 import java.nio.file.StandardWatchEventKinds._
 import java.nio.file.attribute.BasicFileAttributes
+import java.util.concurrent.{TimeUnit, Callable, ThreadFactory, Executors}
 
 import scala.util.control.Breaks._
 import scala.concurrent.duration._
 import scala.collection.JavaConversions._
-import scala.language.implicitConversions
-import java.util.concurrent.{Callable, ThreadFactory, Executors}
 import scala.concurrent.duration.Duration
 
+import scala.language.implicitConversions
+
 object Watcher {
-  type EventReceived[TRoot <: Watchable, TSource <: Watchable] = (TRoot, TSource, WatchEvent.Kind[_]) => Unit
+  type EventReceived[TRoot <: Watchable, TSource <: Watchable] = (TRoot, TSource, EventType) => Unit
 
   trait EventMagnet[TRoot <: Watchable, TSource <: Watchable] {
-    def eventReceived(root: TRoot, source: TSource, kind: WatchEvent.Kind[_]): Unit = {}
+    def eventReceived(root: TRoot, source: TSource, eventType: EventType): Unit = {}
   }
 
   trait EventListener[TRoot <: Watchable, TSource <: Watchable] extends EventMagnet[TRoot, TSource] {
+    def started (root: TRoot, source: TSource):  Unit = {}
+    def stopped (root: TRoot, source: TSource):  Unit = {}
     def created (root: TRoot, source: TSource):  Unit = {}
     def modified(root: TRoot, source: TSource): Unit = {}
     def deleted (root: TRoot, source: TSource):  Unit = {}
-    override def eventReceived(root: TRoot, source: TSource, kind: WatchEvent.Kind[_]) = kind match {
-      case ENTRY_MODIFY => modified(root, source)
-      case ENTRY_CREATE => created(root, source)
-      case ENTRY_DELETE => deleted(root, source)
+
+    override def eventReceived(root: TRoot, source: TSource, eventType: EventType) = eventType match {
+      case STARTED  => started (root, source)
+      case STOPPED  => stopped (root, source)
+      case CREATED  => modified(root, source)
+      case MODIFIED => created (root, source)
+      case DELETED  => deleted (root, source)
     }
   }
 
+  trait EventType extends Kind[AnyRef]
+  private[this] class CustomKind(val name:String) extends EventType {
+    def `type`() = classOf[AnyRef]
+    override def toString = name
+  }
+
+  val STARTED:  EventType = new CustomKind("STARTED")
+  val STOPPED:  EventType = new CustomKind("STOPPED")
+  val CREATED:  EventType = new CustomKind("CREATED")
+  val MODIFIED: EventType = new CustomKind("MODIFIED")
+  val DELETED:  EventType = new CustomKind("DELETED")
+
+  val ALL_KNOWN_EVENT_TYPES: Iterable[EventType] = Iterable(
+      STARTED
+    , STOPPED
+    , CREATED
+    , MODIFIED
+    , DELETED
+  )
+
   implicit val NOOP_EVENTRECEIVED: EventReceived[Watchable, Watchable] = (_, _, _) => {}
-  implicit val NOOP_EVENTMAGNET: EventMagnet[Watchable, Watchable] = new EventMagnet[Watchable, Watchable] {}
+  implicit val NOOP_EVENTMAGNET  : EventMagnet[Watchable, Watchable]   = new EventMagnet[Watchable, Watchable] {}
 
   def singleEventReceived2EventMagnet[TRoot <: Watchable, TSource <: Watchable](
     callback: EventReceived[TRoot, TSource]
   ): EventMagnet[TRoot, TSource] = {
     new EventMagnet[TRoot, TSource] {
-      override def eventReceived(root: TRoot, source: TSource, kind: WatchEvent.Kind[_]): Unit =
-        callback(root, source, kind)
+      override def eventReceived(root: TRoot, source: TSource, eventType: EventType): Unit =
+        callback(root, source, eventType)
     }
   }
 
   implicit def multipleEventReceiveds2EventMagnet[TRoot <: Watchable, TSource <: Watchable](
+    started:  EventReceived[TRoot, TSource] = NOOP_EVENTRECEIVED,
+    stopped:  EventReceived[TRoot, TSource] = NOOP_EVENTRECEIVED,
     created:  EventReceived[TRoot, TSource] = NOOP_EVENTRECEIVED,
     modified: EventReceived[TRoot, TSource] = NOOP_EVENTRECEIVED,
     deleted:  EventReceived[TRoot, TSource] = NOOP_EVENTRECEIVED
   ): EventMagnet[TRoot, TSource] = {
     new EventListener[TRoot, TSource] {
+      override def started (root: TRoot, source: TSource) = started (root, source)
+      override def stopped (root: TRoot, source: TSource) = stopped (root, source)
       override def created (root: TRoot, source: TSource) = created (root, source)
       override def modified(root: TRoot, source: TSource) = modified(root, source)
       override def deleted (root: TRoot, source: TSource) = deleted (root, source)
@@ -57,23 +88,23 @@ object Watcher {
   implicit def files2Watchable(files: TraversableOnce[File]): TraversableOnce[Watchable] =
     files.map(x => Paths.get(x.toURI))
 
-  def apply[TWatchable <: Watchable](watched: TraversableOnce[TWatchable], fallbackDuration: Duration = 1.second)(implicit callback: EventReceived[TWatchable, TWatchable]): WatcherFuture[TWatchable] =
+  def apply[TWatchable <: Watchable](watched: TraversableOnce[TWatchable], fallbackDuration: Duration = 1.second)(implicit callback: EventReceived[TWatchable, TWatchable]): Watcher[TWatchable, TWatchable] =
     apply[TWatchable](watched, fallbackDuration, Executors.defaultThreadFactory())(singleEventReceived2EventMagnet(callback))
 
-  def apply[TWatchable <: Watchable](watched: TraversableOnce[TWatchable], fallbackDuration: Duration, threadFactory: ThreadFactory)(implicit listener: EventMagnet[TWatchable, TWatchable]): WatcherFuture[TWatchable] =
-    new Watcher[TWatchable, TWatchable](watched, listener, fallbackDuration, threadFactory)
+  def apply[TWatchable <: Watchable](watched: TraversableOnce[TWatchable], fallbackDuration: Duration, threadFactory: ThreadFactory)(implicit listener: EventMagnet[TWatchable, TWatchable]): Watcher[TWatchable, TWatchable] =
+    new WatcherImpl[TWatchable, TWatchable](watched, listener, fallbackDuration, threadFactory)
 }
 
-trait WatcherFuture[TWatchable <: Watchable] {
-  def cancel():Unit
+trait Watcher[TWatchable <: Watchable, TSource <: Watchable] {
+  def cancel(timeout:Duration = 0.seconds): Boolean
 }
 
-class Watcher[TWatchable <: Watchable, TSource <: Watchable] private (
+sealed class WatcherImpl[TWatchable <: Watchable, TSource <: Watchable] (
   watched:          TraversableOnce[TWatchable],
   listener:         Watcher.EventMagnet[TWatchable, TSource],
   fallbackDuration: Duration,
   threadFactory:    ThreadFactory
-) extends WatcherFuture[TWatchable] {
+) extends Watcher[TWatchable, TSource] {
 
   require(fallbackDuration > 0.seconds, "The fallback duration must be greater than 0 seconds")
 
@@ -97,16 +128,11 @@ class Watcher[TWatchable <: Watchable, TSource <: Watchable] private (
       def call(): Unit = {
         try {
           var stop = false
-          var existed = true
           while(!stop) {
             try {
               watch match {
                 case x: Path =>
                   if (x.toFile.exists()) {
-                    if (!existed) {
-                      existed = true
-                      listener.eventReceived(watch, watch.asInstanceOf[TSource], ENTRY_CREATE)
-                    }
                     run(watch)
                   } else {
                     Thread.sleep(fallback_millis, fallback_nanos)
@@ -116,7 +142,7 @@ class Watcher[TWatchable <: Watchable, TSource <: Watchable] private (
               }
             } catch {
               case _:WatchedCompletelyRemoved =>
-                existed = false
+                //Do nothing, just let it loop back around.
               case _:InterruptedException =>
                 stop = true
             }
@@ -131,18 +157,20 @@ class Watcher[TWatchable <: Watchable, TSource <: Watchable] private (
     })
   }
 
-  def cancel():Unit =
+  def cancel(timeout:Duration = 0.seconds):Boolean = {
     executor.shutdownNow()
+    executor.awaitTermination(timeout.toNanos, TimeUnit.NANOSECONDS)
+  }
 
   private[this] def run(watch: TWatchable) = {
     var keys: Map[WatchKey, Watchable] = Map()
-    var watcher:WatchService = null
+    var watcher_service:WatchService = null
 
     try {
-      watcher = FileSystems.getDefault.newWatchService()
+      watcher_service = FileSystems.getDefault.newWatchService()
 
       def register(watchItem: Watchable) = {
-        keys += watchItem.register(watcher, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY) -> watchItem
+        keys += watchItem.register(watcher_service, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY) -> watchItem
       }
 
       def registerPath(path: Path) = {
@@ -159,12 +187,14 @@ class Watcher[TWatchable <: Watchable, TSource <: Watchable] private (
         case x: Watchable => register(x)
       }
 
+      listener.eventReceived(watch, watch.asInstanceOf[TSource], Watcher.STARTED)
+
       breakable {
         while (true) {
           //Wait for key to be signalled.
           var key: WatchKey = null
           try {
-            key = watcher.take()
+            key = watcher_service.take()
           } catch {
             case _:Throwable =>
               break()
@@ -195,8 +225,14 @@ class Watcher[TWatchable <: Watchable, TSource <: Watchable] private (
                       }
                     }
 
+                    val equivalent = kind match {
+                      case ENTRY_MODIFY => Watcher.MODIFIED
+                      case ENTRY_CREATE => Watcher.CREATED
+                      case ENTRY_DELETE => Watcher.DELETED
+                    }
+
                     //let everyone know about it.
-                    listener.eventReceived(watch, value.asInstanceOf[TSource], kind)
+                    listener.eventReceived(watch, value.asInstanceOf[TSource], equivalent)
                 }
               }
 
@@ -215,9 +251,10 @@ class Watcher[TWatchable <: Watchable, TSource <: Watchable] private (
         }
       }
     } finally {
-      if (watcher != null) {
-        watcher.close()
+      if (watcher_service != null) {
+        watcher_service.close()
       }
+      listener.eventReceived(watch, watch.asInstanceOf[TSource], Watcher.STOPPED)
     }
   }
 }

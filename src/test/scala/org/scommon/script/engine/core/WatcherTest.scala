@@ -5,12 +5,11 @@ import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import java.io.{PrintWriter, File}
-import java.nio.file.{WatchEvent, Path, Paths}
-import java.nio.file.StandardWatchEventKinds._
+import java.nio.file.{Path, Paths}
 
 import scala.collection._
 import scala.concurrent.duration._
-import java.util.concurrent.{TimeUnit, CountDownLatch}
+import java.util.concurrent.{Semaphore, TimeUnit, CountDownLatch}
 import org.apache.commons.io.FileUtils
 
 /**
@@ -39,7 +38,7 @@ class WatcherTest extends FunSuite with ShouldMatchers with BeforeAndAfterAll
     p
   }
 
-  @inline def touch(f: File, time:Long = System.currentTimeMillis()): Boolean = {
+  def touch(f: File, time:Long = System.currentTimeMillis()): Boolean = {
     if (f.isDirectory) {
       if (!f.exists())
         f.mkdirs()
@@ -56,18 +55,25 @@ class WatcherTest extends FunSuite with ShouldMatchers with BeforeAndAfterAll
   test("Basic watcher for a directory works") {
     val dir = createDir(path = "basic-watcher-works")
 
-    val latch = new CountDownLatch(2)
-    val future = Watcher(Seq(dir), 10.milliseconds) { (root, source, kind) =>
-      println(s"KIND: $kind")
-      if (kind == ENTRY_CREATE)
-        latch.countDown()
+    val wait_to_start = new Semaphore(0)
+    val latch = new CountDownLatch(3)
+    val future = Watcher(Seq(dir), 10.milliseconds) { (root, source, event) =>
+      //println(s"event: $event")
+      event match {
+        case Watcher.STARTED => wait_to_start.release()
+        case Watcher.CREATED | Watcher.MODIFIED => latch.countDown()
+      }
     }
 
-    createDir(dir, "A")
-    touch(dir.resolve("B").toFile)
+    //Wait 3 seconds and see if we've started.
+    wait_to_start.tryAcquire(3L, TimeUnit.SECONDS) should be (true)
 
-    latch.await(30L, TimeUnit.SECONDS)
+    val dirA = createDir(dir, "A")
+    touch(dirA.resolve("B").toFile)
+    createDir(dir, "C")
 
-    future.cancel()
+    latch.await(10L, TimeUnit.SECONDS)
+
+    future.cancel(10.seconds)
   }
 }
