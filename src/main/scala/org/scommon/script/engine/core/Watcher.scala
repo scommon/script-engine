@@ -17,20 +17,26 @@ import java.util.concurrent.locks.LockSupport
 import java.util.concurrent.atomic.AtomicBoolean
 
 object Watcher {
+  type ErrorReceived[TRoot <: Watchable] = (TRoot, Throwable) => Unit
   type EventReceived[TRoot <: Watchable, TSource <: Watchable] = (TRoot, TSource, EventType) => Unit
 
   trait EventMagnet[TRoot <: Watchable, TSource <: Watchable] {
     def eventReceived(root: TRoot, source: TSource, eventType: EventType): Unit = {}
+    def errorReceived(root: TRoot, error: Throwable): Unit = {}
   }
 
   trait EventListener[TRoot <: Watchable, TSource <: Watchable] extends EventMagnet[TRoot, TSource] {
     def started (root: TRoot, source: TSource):  Unit = {}
     def stopped (root: TRoot, source: TSource):  Unit = {}
     def created (root: TRoot, source: TSource):  Unit = {}
-    def modified(root: TRoot, source: TSource): Unit = {}
+    def modified(root: TRoot, source: TSource):  Unit = {}
     def deleted (root: TRoot, source: TSource):  Unit = {}
+    def error   (root: TRoot, error: Throwable): Unit = {}
 
-    override def eventReceived(root: TRoot, source: TSource, eventType: EventType) = eventType match {
+    final override def errorReceived(root: TRoot, err: Throwable) =
+      error(root, err)
+
+    final override def eventReceived(root: TRoot, source: TSource, eventType: EventType) = eventType match {
       case STARTED  => started (root, source)
       case STOPPED  => stopped (root, source)
       case CREATED  => modified(root, source)
@@ -53,12 +59,13 @@ object Watcher {
 
   val ALL_KNOWN_EVENT_TYPES: Iterable[EventType] = Iterable(
       STARTED
-    , STOPPED
     , CREATED
     , MODIFIED
     , DELETED
+    , STOPPED
   )
 
+  implicit val NOOP_ERRORRECEIVED: ErrorReceived[Watchable] = (_, _) => {}
   implicit val NOOP_EVENTRECEIVED: EventReceived[Watchable, Watchable] = (_, _, _) => {}
   implicit val NOOP_EVENTMAGNET  : EventMagnet[Watchable, Watchable]   = new EventMagnet[Watchable, Watchable] {}
 
@@ -66,8 +73,29 @@ object Watcher {
     callback: EventReceived[TRoot, TSource]
   ): EventMagnet[TRoot, TSource] = {
     new EventMagnet[TRoot, TSource] {
-      override def eventReceived(root: TRoot, source: TSource, eventType: EventType): Unit =
+      final override def eventReceived(root: TRoot, source: TSource, eventType: EventType): Unit =
         callback(root, source, eventType)
+    }
+  }
+
+  def singleErrorReceived2EventMagnet[TRoot <: Watchable](
+    callback: ErrorReceived[TRoot]
+  ): EventMagnet[TRoot, TRoot] = {
+    new EventMagnet[TRoot, TRoot] {
+      final override def errorReceived(root: TRoot, error: Throwable): Unit =
+        callback(root, error)
+    }
+  }
+
+  def eventReceivedAndErrorReceived2EventMagnet[TRoot <: Watchable, TSource <: Watchable](
+    fnEvent: EventReceived[TRoot, TSource],
+    fnError: ErrorReceived[TRoot]
+  ): EventMagnet[TRoot, TSource] = {
+    new EventMagnet[TRoot, TSource] {
+      final override def eventReceived(root: TRoot, source: TSource, eventType: EventType): Unit =
+        fnEvent(root, source, eventType)
+      final override def errorReceived(root: TRoot, error: Throwable): Unit =
+        fnError(root, error)
     }
   }
 
@@ -90,8 +118,8 @@ object Watcher {
   implicit def files2Watchable(files: TraversableOnce[File]): TraversableOnce[Watchable] =
     files.map(x => Paths.get(x.toURI))
 
-  def apply[TWatchable <: Watchable](watched: TraversableOnce[TWatchable], fallbackDuration: Duration = 1.second)(implicit callback: EventReceived[TWatchable, TWatchable]): Watcher[TWatchable, TWatchable] =
-    apply[TWatchable](watched, fallbackDuration, Executors.defaultThreadFactory())(singleEventReceived2EventMagnet(callback))
+  def apply[TWatchable <: Watchable](watched: TraversableOnce[TWatchable], fallbackDuration: Duration = 1.second)(fnEvent: EventReceived[TWatchable, TWatchable])(implicit fnError: ErrorReceived[TWatchable] = NOOP_ERRORRECEIVED): Watcher[TWatchable, TWatchable] =
+    apply[TWatchable](watched, fallbackDuration, Executors.defaultThreadFactory())(eventReceivedAndErrorReceived2EventMagnet(fnEvent, fnError))
 
   def apply[TWatchable <: Watchable](watched: TraversableOnce[TWatchable], fallbackDuration: Duration, threadFactory: ThreadFactory)(implicit listener: EventMagnet[TWatchable, TWatchable]): Watcher[TWatchable, TWatchable] =
     new WatcherImpl[TWatchable, TWatchable](watched, listener, fallbackDuration, threadFactory)
@@ -196,9 +224,16 @@ sealed class WatcherImpl[TWatchable <: Watchable, TSource <: Watchable] (
         case x: Watchable => register(x)
       }
 
-      //Ensure that STARTED is always sent first. This still happens even though we've already
-      //registered b/c we don't block for work until we call .take() later on.
-      listener.eventReceived(watch, watch.asInstanceOf[TSource], Watcher.STARTED)
+      try {
+        //Ensure that STARTED is always sent first. This still happens even though we've already
+        //registered b/c we don't block for work until we call .take() later on.
+        listener.eventReceived(watch, watch.asInstanceOf[TSource], Watcher.STARTED)
+      } catch {
+        case t:InterruptedException =>
+          throw t
+        case t:Throwable =>
+          listener.errorReceived(watch, t)
+      }
 
       breakable {
         while (true) {
@@ -261,10 +296,11 @@ sealed class WatcherImpl[TWatchable <: Watchable, TSource <: Watchable] (
           }
         }
       }
-    //} catch {
-    //  case t:Throwable =>
-    //    t.printStackTrace()
-    //    throw t
+    } catch {
+      case t:InterruptedException =>
+        throw t
+      case t:Throwable =>
+        listener.errorReceived(watch, t)
     } finally {
       if (watcher_service != null) {
         watcher_service.close()

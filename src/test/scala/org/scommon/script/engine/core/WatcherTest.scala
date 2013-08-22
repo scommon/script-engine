@@ -53,6 +53,11 @@ class WatcherTest extends FunSuite with ShouldMatchers with BeforeAndAfterAll
     }
   }
 
+  implicit val failOnWatcherError: Watcher.ErrorReceived[Path] = (_, cause) => {
+    cause.printStackTrace()
+    fail(cause)
+  }
+
   test("Basic watcher for a directory works") {
     val dir = createDir(path = "basic-watcher-works")
 
@@ -60,7 +65,7 @@ class WatcherTest extends FunSuite with ShouldMatchers with BeforeAndAfterAll
     val wait_to_stop = new Semaphore(0)
     val wait_for_event_received = new Semaphore(0)
     val future = Watcher(Seq(dir), 10.milliseconds) { (root, source, event) =>
-      println(s"event: $event")
+      //println(s"event: $event")
       event match {
         case Watcher.STARTED => wait_to_start.release()
         case Watcher.CREATED => wait_for_event_received.release()
@@ -84,7 +89,7 @@ class WatcherTest extends FunSuite with ShouldMatchers with BeforeAndAfterAll
     touch(dirA.resolve("D").toFile)
     wait_for_event_received.tryAcquire(10L, TimeUnit.SECONDS) should be (true)
 
-    future.cancel(10.seconds) should be (true)
+    future.cancel(3.seconds) should be (true)
 
     wait_to_stop.tryAcquire(3L, TimeUnit.SECONDS) should be (true)
   }
