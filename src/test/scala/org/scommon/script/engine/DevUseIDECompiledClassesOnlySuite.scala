@@ -5,6 +5,7 @@ import org.scalatest.matchers.ShouldMatchers
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import java.io.File
+import engine._
 
 /**
  * @author kkougios

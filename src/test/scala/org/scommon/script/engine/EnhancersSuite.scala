@@ -1,5 +1,4 @@
 package org.scommon.script.engine
-
 import org.junit.runner.RunWith
 import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.junit.JUnitRunner

@@ -3,6 +3,7 @@ package org.scommon.script.engine
 import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.FunSuite
 import java.io.File
+import engine._
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 

@@ -6,6 +6,8 @@ import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import java.io.File
 
+import engine._
+
 /**
  * @author kostantinos.kougios
  *
@@ -18,8 +20,18 @@ class ScalaClassLoaderSuite extends FunSuite with ShouldMatchers
 	// parent classloader will contain scala-lib and all test-compiled classes
 	val classPath = Set[File]()
 
-	def classLoader(sourceDir: File, classPath: Set[File]) =
-		new ScalaClassLoader(Set(sourceDir), classPath, Thread.currentThread.getContextClassLoader, ClassLoaderConfig.default)
+	def classLoader(sourceDir: File, classPath: Set[File], config: ClassLoaderConfig = ClassLoaderConfig.Default) =
+		new ScalaClassLoader(Set(sourceDir), classPath, Thread.currentThread.getContextClassLoader, config)
+
+	test("class registry") {
+		val cl = classLoader(new File(sourceDir, "v1"), Set(), config = ClassLoaderConfig.Default.copy(enableClassRegistry = true))
+		cl.all.map(_.getName).toSet should be(Set("test.TestDep", "test.TestParam", "test.Test"))
+	}
+
+	test("classes of type") {
+		val cl = classLoader(new File(sourceDir, "v1"), Set(), config = ClassLoaderConfig.Default.copy(enableClassRegistry = true))
+		cl.withTypeOf[com.googlecode.scalascriptengine.TestParamTrait] should be(List(cl.get("test.TestParam")))
+	}
 
 	test("listeners are invoked") {
 		val destDir = newTmpDir("defaultpackage")
@@ -29,7 +41,7 @@ class ScalaClassLoaderSuite extends FunSuite with ShouldMatchers
 			Set(destDir),
 			classPath,
 			Thread.currentThread.getContextClassLoader,
-			ClassLoaderConfig.default.copy(classLoadingListeners = ((className: String, clz: Class[_]) => {
+			ClassLoaderConfig.Default.copy(classLoadingListeners = ((className: String, clz: Class[_]) => {
 				if (className == "Test" && classOf[com.googlecode.scalascriptengine.TestClassTrait].isAssignableFrom(clz)) count += 1
 			}) :: Nil))
 		scl.newInstance[com.googlecode.scalascriptengine.TestClassTrait]("Test")

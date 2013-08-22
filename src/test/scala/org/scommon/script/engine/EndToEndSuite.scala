@@ -3,6 +3,7 @@ package org.scommon.script.engine
 import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.FunSuite
 import java.io.File
+import engine._
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import com.googlecode.concurrent.ExecutorServiceManager
@@ -28,7 +29,7 @@ class EndToEndSuite extends FunSuite with ShouldMatchers
 			try {
 				fw.write( """
 package reload
-import org.scommon.script.engine.TestClassTrait
+import com.googlecode.scalascriptengine.TestClassTrait
 
 class Main extends TestClassTrait
 {

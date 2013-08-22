@@ -15,7 +15,7 @@ class CompilationStatus private (val startTime: DateTime, val stopTime: Option[D
 		case ScanningSources | Compiling => stopTrigger.set(true)
 	}
 	def stopIfCompiling: Unit = stopTrigger.set(true)
-	private[script] def checkStop: Unit = if (stopTrigger.get) throw new CompilationStopped
+	private[engine] def checkStop: Unit = if (stopTrigger.get) throw new CompilationStopped
 }
 
 object CompilationStatus {

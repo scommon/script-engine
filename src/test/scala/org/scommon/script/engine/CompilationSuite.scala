@@ -5,6 +5,7 @@ import org.scalatest.FunSuite
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import java.io.File
+import engine._
 
 /**
  * @author kostantinos.kougios
@@ -12,10 +13,23 @@ import java.io.File
  *         22 Dec 2011
  */
 @RunWith(classOf[JUnitRunner])
-class CompilationSuite extends FunSuite with ShouldMatchers {
-
+class CompilationSuite extends FunSuite with ShouldMatchers
+{
 	val sourceDir = new File("testfiles/CompilationSuite")
 	val versionsDir = new File("testfiles/versions")
+
+	test("invoking compilation listeners") {
+		val sourceDir1 = new File("testfiles/CompilationSuite1")
+		var cnt = 0
+		val config = ScalaScriptEngine.defaultConfig(sourceDir1).copy(compilationListeners = List(
+			version => cnt += 1
+		))
+		val sse = ScalaScriptEngine.withoutRefreshPolicy(config, Set[File]())
+		sse.deleteAllClassesInOutputDirectory
+		sse.refresh
+
+		cnt should be(1)
+	}
 
 	test("multiple source and target dirs") {
 		val sourceDir1 = new File("testfiles/CompilationSuite1")

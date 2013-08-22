@@ -1,5 +1,4 @@
 package org.scommon.script.engine
-
 import java.io.File
 import java.io.FileInputStream
 

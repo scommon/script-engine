@@ -6,9 +6,6 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
-import scala.Predef._
-import scala.Some
-import scala.Some
 
 /**
  * periodically scans the source directories and if a file changed, it recompiles
@@ -94,7 +91,7 @@ trait RefreshSynchronously extends ScalaScriptEngine with OnChangeRefresh
 				refresh
 			} finally {
 				// set lastCompile even in case of compilation errors
-				lastCompiled = System.currentTimeMillis
+				lastCompiled = time
 			}
 		}
 	}

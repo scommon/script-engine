@@ -1,9 +1,8 @@
-package org.scommon.script
+package org.scommon.script.engine
 
 import java.io.File
 
 import org.apache.commons.io.FileUtils
-import scala.Option
 
 /**
  * @author kostantinos.kougios
