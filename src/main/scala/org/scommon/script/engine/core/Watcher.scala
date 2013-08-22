@@ -13,6 +13,8 @@ import scala.collection.JavaConversions._
 import scala.concurrent.duration.Duration
 
 import scala.language.implicitConversions
+import java.util.concurrent.locks.LockSupport
+import java.util.concurrent.atomic.AtomicBoolean
 
 object Watcher {
   type EventReceived[TRoot <: Watchable, TSource <: Watchable] = (TRoot, TSource, EventType) => Unit
@@ -109,8 +111,7 @@ sealed class WatcherImpl[TWatchable <: Watchable, TSource <: Watchable] (
   require(fallbackDuration > 0.seconds, "The fallback duration must be greater than 0 seconds")
 
   private[this] val executor = Executors.newCachedThreadPool(threadFactory)
-  private[this] val fallback_millis = fallbackDuration.toMillis
-  private[this] val fallback_nanos: Int = (fallbackDuration.toNanos - fallback_millis.milliseconds.toNanos).toInt
+  private[this] val fallback_nanos = fallbackDuration.toNanos
 
   //Exception that we'll use to break out of the runner. Pre-create an instance that
   //we can re-use multiple times if necessary.
@@ -123,41 +124,49 @@ sealed class WatcherImpl[TWatchable <: Watchable, TSource <: Watchable] (
   //only ONCE -- it's possible the collection can be traversed multiple times, but
   //we shouldn't make any assumptions.
 
-  for (watch <- watched) {
-    executor.submit(new Callable[Unit] {
-      def call(): Unit = {
-        try {
-          var stop = false
-          while(!stop) {
-            try {
-              watch match {
-                case x: Path =>
-                  if (x.toFile.exists()) {
+  private[this] val tasks = (
+    for (watch <- watched) yield {
+      val stop = new AtomicBoolean(false)
+      val future = executor.submit(new Callable[Unit] {
+        def call(): Unit = {
+          try {
+            while(!stop.get()) {
+              try {
+                watch match {
+                  case x: Path =>
+                    if (x.toFile.exists()) {
+                      run(watch)
+                    } else {
+                      LockSupport.parkNanos(fallback_nanos)
+                      //Thread.sleep(fallback_millis, fallback_nanos)
+                    }
+                  case x: Watchable =>
                     run(watch)
-                  } else {
-                    Thread.sleep(fallback_millis, fallback_nanos)
-                  }
-                case x: Watchable =>
-                  run(watch)
+                }
+              } catch {
+                case _:WatchedCompletelyRemoved =>
+                  //Do nothing, just let it loop back around.
+                case _:InterruptedException =>
+                  stop.set(true)
               }
-            } catch {
-              case _:WatchedCompletelyRemoved =>
-                //Do nothing, just let it loop back around.
-              case _:InterruptedException =>
-                stop = true
             }
+          } catch {
+            case _:InterruptedException =>
+              //Do nothing, just exit.
+            case t:Throwable =>
+              throw t
           }
-        } catch {
-          case _:InterruptedException =>
-            //Do nothing, just exit.
-          case t:Throwable =>
-            throw t
         }
-      }
-    })
-  }
+      })
+      (stop, future)
+    }
+  ).toIterable
 
   def cancel(timeout:Duration = 0.seconds):Boolean = {
+    for ((stop, future) <- tasks) {
+      stop.set(true)
+      future.cancel(true)
+    }
     executor.shutdownNow()
     executor.awaitTermination(timeout.toNanos, TimeUnit.NANOSECONDS)
   }
@@ -187,6 +196,8 @@ sealed class WatcherImpl[TWatchable <: Watchable, TSource <: Watchable] (
         case x: Watchable => register(x)
       }
 
+      //Ensure that STARTED is always sent first. This still happens even though we've already
+      //registered b/c we don't block for work until we call .take() later on.
       listener.eventReceived(watch, watch.asInstanceOf[TSource], Watcher.STARTED)
 
       breakable {
@@ -250,10 +261,15 @@ sealed class WatcherImpl[TWatchable <: Watchable, TSource <: Watchable] (
           }
         }
       }
+    //} catch {
+    //  case t:Throwable =>
+    //    t.printStackTrace()
+    //    throw t
     } finally {
       if (watcher_service != null) {
         watcher_service.close()
       }
+      //Stopped should always come last.
       listener.eventReceived(watch, watch.asInstanceOf[TSource], Watcher.STOPPED)
     }
   }

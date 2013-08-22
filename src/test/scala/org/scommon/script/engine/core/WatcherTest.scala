@@ -9,8 +9,9 @@ import java.nio.file.{Path, Paths}
 
 import scala.collection._
 import scala.concurrent.duration._
-import java.util.concurrent.{Semaphore, TimeUnit, CountDownLatch}
+import java.util.concurrent.Semaphore
 import org.apache.commons.io.FileUtils
+import java.util.concurrent.TimeUnit
 
 /**
  * @author David Hoyt &lt;dhoyt@hoytsoft.org&gt;
@@ -56,12 +57,15 @@ class WatcherTest extends FunSuite with ShouldMatchers with BeforeAndAfterAll
     val dir = createDir(path = "basic-watcher-works")
 
     val wait_to_start = new Semaphore(0)
-    val latch = new CountDownLatch(3)
+    val wait_to_stop = new Semaphore(0)
+    val wait_for_event_received = new Semaphore(0)
     val future = Watcher(Seq(dir), 10.milliseconds) { (root, source, event) =>
-      //println(s"event: $event")
+      println(s"event: $event")
       event match {
         case Watcher.STARTED => wait_to_start.release()
-        case Watcher.CREATED | Watcher.MODIFIED => latch.countDown()
+        case Watcher.CREATED => wait_for_event_received.release()
+        case Watcher.STOPPED => wait_to_stop.release()
+        case _ =>
       }
     }
 
@@ -69,11 +73,19 @@ class WatcherTest extends FunSuite with ShouldMatchers with BeforeAndAfterAll
     wait_to_start.tryAcquire(3L, TimeUnit.SECONDS) should be (true)
 
     val dirA = createDir(dir, "A")
+    wait_for_event_received.tryAcquire(10L, TimeUnit.SECONDS) should be (true)
+
     touch(dirA.resolve("B").toFile)
+    wait_for_event_received.tryAcquire(10L, TimeUnit.SECONDS) should be (true)
+
     createDir(dir, "C")
+    wait_for_event_received.tryAcquire(10L, TimeUnit.SECONDS) should be (true)
 
-    latch.await(10L, TimeUnit.SECONDS)
+    touch(dirA.resolve("D").toFile)
+    wait_for_event_received.tryAcquire(10L, TimeUnit.SECONDS) should be (true)
 
-    future.cancel(10.seconds)
+    future.cancel(10.seconds) should be (true)
+
+    wait_to_stop.tryAcquire(3L, TimeUnit.SECONDS) should be (true)
   }
 }
