@@ -77,7 +77,7 @@ package object core {
 
   //The following allows us to use anything with a .close() method in a for comprehension w/
   //automatic cleanup.
-  private[this] class ResourceWithAutomaticCleanup[A](resource:A, fnOnFinally:A => Unit) extends CustomizableComprehensionForEach {
+  private[this] class ResourceWithAutomaticCleanup[A](resource:A, fnOnFinally:A => Unit) extends ForEachProcessor {
     def foreach[T, U](value:T, fn: (T) => U):U = {
       try {
         fn(value)
@@ -111,7 +111,7 @@ package object core {
   @inline implicit def closeable2ZeroOrOneCustomizableComprehension[T <: java.io.Closeable](closeable: T): ZeroOrOneCustomizableComprehension[T] =
     CustomizedComprehension(
       closeable,
-      Some(new ResourceWithAutomaticCleanup[T](closeable, {_.close()}))
+      new ResourceWithAutomaticCleanup[T](closeable, {_.close()})
     )
 
   /**
@@ -126,7 +126,7 @@ package object core {
   @inline implicit def closeableType2ZeroOrOneCustomizableComprehension[T <: CloseableType](closeable: T): ZeroOrOneCustomizableComprehension[T] =
     CustomizedComprehension(
       closeable,
-      Some(new ResourceWithAutomaticCleanup[T](closeable, {_.close()}))
+      new ResourceWithAutomaticCleanup[T](closeable, {_.close()})
     )
 
   @inline implicit class OptionStringExtensions(s: Option[String]) {
