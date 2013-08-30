@@ -1,25 +1,26 @@
 package org.scommon.io
 
-import java.io.InputStream
 import scala.Array
-import org.scommon.core.CloseableIterator
+import java.io.{InputStreamReader, BufferedReader, InputStream}
+import java.nio.charset.{CharsetDecoder, Charset}
+import org.scommon.core.{Closeable}
 
 object InputStreamUtil {
-  def toIterator(input: InputStream, bufferSize: Int = 1024): CloseableIterator[(Int, Array[Byte])] = new CloseableIterator[(Int, Array[Byte])] {
-    @volatile private[this] var read = 0
-
-    override def hasDefiniteSize: Boolean = false
-    override def isTraversableAgain: Boolean = false
-
-    def close(): Unit = input.close()
-    def hasNext: Boolean = read >= 0
-
-    def next(): (Int, Array[Byte]) = {
-      val buffer = new Array[Byte](1024)
-      val bytes_read = input.read(buffer)
-      read = bytes_read
-
-      (bytes_read, buffer)
-    }
+  @inline def toIterator(input:InputStream, size:Int = 1024):Iterator[(Int, Array[Byte])] with Closeable = new CloseableInputStreamIterator {
+    protected val source = input
+    protected val bufferSize = size
   }
+
+  @inline def toCloseable(input:InputStream):InputStream with Closeable = new CloseableInputStream {
+    protected val source = input
+  }
+
+  @inline def toBufferedReader(input:InputStream, charset:Charset):BufferedReader with Closeable =
+    new BufferedReader(new InputStreamReader(input, charset)) with Closeable
+
+  @inline def toBufferedReader(input:InputStream, charsetName:String):BufferedReader with Closeable =
+    new BufferedReader(new InputStreamReader(input, charsetName)) with Closeable
+
+  @inline def toBufferedReader(input:InputStream, dec:CharsetDecoder):BufferedReader with Closeable =
+    new BufferedReader(new InputStreamReader(input, dec)) with Closeable
 }

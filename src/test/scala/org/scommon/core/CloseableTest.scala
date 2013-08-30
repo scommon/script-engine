@@ -90,22 +90,34 @@ class CloseableTest extends FunSuite
       using(new BufferedReader(new FileReader(file1))) { reader =>
         reader should not be (null)
       }
+      file1.delete() should be(true)
 
       using(new BufferedWriter(new FileWriter(file2))) { writer =>
         writer should not be (null)
-        writer.write("Test output")
+        writer.write("Test output 1")
+        writer.newLine()
+        writer.write("Test output 2")
         writer.newLine()
       }
 
       //Read in a file and ensure that we use filters and maps.
+      //We test it this way to ensure that the reader is not closed until
+      //after the body has been evaluated.
       for {
         reader <- new BufferedReader(new FileReader(file2)) if reader.ready()
-        line = reader.readLine()
+        line1 = reader.readLine()
+      } {
+        val line2 = reader.readLine()
+        line1 should be ("Test output 1")
+        line2 should be ("Test output 2")
       }
-        line should be ("Test output")
 
       //All files should be closed at this point.
       //If they're not, then deleting the working directory should fail.
+    } catch {
+      case t:Throwable =>
+        t.printStackTrace()
+        fail(t)
     } finally {
       working.deleteAll should be (true)
     }

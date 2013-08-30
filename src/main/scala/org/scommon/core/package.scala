@@ -11,6 +11,8 @@ import scala.language.implicitConversions
 /**
  */
 package object core {
+  import ZeroOrOneCustomizableComprehension._
+
   val readableInstantOrdering = implicitly[Ordering[ReadableInstant]]
 
   implicit val ReadableDateTimeOrdering = new Ordering[ReadableDateTime] {
@@ -42,54 +44,90 @@ package object core {
     (new Temp).default_value
   }
 
-    /**
-     * Structural type that says "anything with a close method that returns Unit".
-     */
+  /**
+   * Structural type that says "anything with a close method that returns Unit".
+   */
   type CloseableType = { def close():Unit }
 
-  def using[A <: CloseableType, B](closeable: A)(body: A => B): B =
-    try {
-      body(closeable)
-    } finally {
-      closeable.close()
-    }
+  /**
+   * Type alias that describes what's required for the using method to work.
+   * This follows the magnet pattern.
+   *
+   * @tparam A Type of resource that will be provided to the body of the using
+   *           method.
+   */
+  type UsingMagnet[A <: java.io.Closeable] = ZeroOrOneCustomizableComprehension[A]
+
+  /**
+   * Accepts [[org.scommon.core.UsingMagnet]] instances and provides automatic
+   * resource cleanup after the evaluation of the provided body.
+   *
+   * Instances of [[org.scommon.core.UsingMagnet]] are typically derived via
+   * implicit conversion from a [[org.scommon.core.CloseableType]] or an instance
+   * of [[org.scommon.core.Closeable]] or [[java.io.Closeable]].
+   *
+   * @param closeable Instance of a [[org.scommon.core.UsingMagnet]].
+   * @param body Body that will execute with the provided resource and automatically
+   *             cleaned up afterwards.
+   * @tparam A Type of resource to provide to the body.
+   * @return Return nothing.
+   */
+  def using[A <: java.io.Closeable](closeable: UsingMagnet[A])(body: A => Unit):Unit =
+    closeable.foreach(body)
 
   //The following allows us to use anything with a .close() method in a for comprehension w/
   //automatic cleanup.
-
-  private[this] class CloseableResource[+T](resource: T, fnOnClose: T => Unit) extends OptionFilterable[T] {
-    self =>
-
-    @inline final def map[B](f: T => B): B =
-      f(resource)
-
-    @inline final def flatMap[B](fn: T => Option[B]): Option[B] =
-      if (resource equals null) None else fn(resource)
-
-    @inline final def filter(fn: T => Boolean): Option[T] =
-      if (fn(resource)) Some(resource) else None
-
-    @inline final def foreach(fn: T => Unit) = {
-      val r = resource
+  private[this] class ResourceWithAutomaticCleanup[A](resource:A, fnOnFinally:A => Unit) extends CustomizableComprehensionForEach {
+    def foreach[T, U](value:T, fn: (T) => U):U = {
       try {
-        fn(r)
+        fn(value)
       } finally {
-        fnOnClose(r)
+        fnOnFinally(resource)
       }
     }
   }
 
   /**
+   * Transforms something that's structurally a [[org.scommon.core.CloseableType]] into a concrete
+   * [[org.scommon.core.Closeable]].
+   *
+   * @param resource The resource to convert to a [[org.scommon.core.Closeable]].
+   * @tparam T Refers to the original type that is structurally equivalent to [[org.scommon.core.CloseableType]].
+   * @return New instance of [[org.scommon.core.Closeable]] that encapsulates the resource.
+   */
+  @inline implicit def closeableType2Closeable[T <: CloseableType](resource: T): Closeable = new Closeable {
+    def close() = resource.close()
+  }
+
+  /**
    * Implicitly converts something that's Closeable into a
-   * [[org.scommon.core.OptionFilterable]]. This should be picked up for use in for comprehensions and has no
+   * [[org.scommon.core.ZeroOrOneCustomizableComprehension]]. This should be picked up for use in for comprehensions and has no
    * real utility elsewhere.
    *
    * @param closeable An instance of a class that defines a .close() method as described by Closeable.
    * @tparam T Actual type of the Closeable.
-   * @return A new instance of [[org.scommon.core.OptionFilterable]].
+   * @return A new instance of [[org.scommon.core.ZeroOrOneCustomizableComprehension]].
    */
-  @inline implicit def closeable2OptionFilterable[T <: CloseableType](closeable: T): OptionFilterable[T] =
-    new CloseableResource[T](closeable, {_.close()})
+  @inline implicit def closeable2ZeroOrOneCustomizableComprehension[T <: java.io.Closeable](closeable: T): ZeroOrOneCustomizableComprehension[T] =
+    CustomizedComprehension(
+      closeable,
+      Some(new ResourceWithAutomaticCleanup[T](closeable, {_.close()}))
+    )
+
+  /**
+   * Implicitly converts something that's Closeable into a
+   * [[org.scommon.core.ZeroOrOneCustomizableComprehension]]. This should be picked up for use in for comprehensions and has no
+   * real utility elsewhere.
+   *
+   * @param closeable An instance of a class that defines a .close() method as described by Closeable.
+   * @tparam T Actual type of the Closeable.
+   * @return A new instance of [[org.scommon.core.ZeroOrOneCustomizableComprehension]].
+   */
+  @inline implicit def closeableType2ZeroOrOneCustomizableComprehension[T <: CloseableType](closeable: T): ZeroOrOneCustomizableComprehension[T] =
+    CustomizedComprehension(
+      closeable,
+      Some(new ResourceWithAutomaticCleanup[T](closeable, {_.close()}))
+    )
 
   @inline implicit class OptionStringExtensions(s: Option[String]) {
     /** @see [[org.scommon.core.StringUtil#isNoneOrEmpty(Option[String]))]] */
