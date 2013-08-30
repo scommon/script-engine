@@ -14,7 +14,7 @@ trait Closeable extends java.io.Closeable {
 
 /**
  * Convenience trait for [[scala.collection.Iterator]] ensuring compliance with
- * [[org.scommon.script.engine.core.CloseableType]].
+ * [[org.scommon.core.CloseableType]].
  *
  * @tparam A type of data over which this instance will iterate
  */

@@ -81,38 +81,38 @@ package object core {
 
   /**
    * Implicitly converts something that's Closeable into a
-   * [[org.scommon.script.engine.core.OptionFilterable]]. This should be picked up for use in for comprehensions and has no
+   * [[org.scommon.core.OptionFilterable]]. This should be picked up for use in for comprehensions and has no
    * real utility elsewhere.
    *
    * @param closeable An instance of a class that defines a .close() method as described by Closeable.
    * @tparam T Actual type of the Closeable.
-   * @return A new instance of [[org.scommon.script.engine.core.OptionFilterable]].
+   * @return A new instance of [[org.scommon.core.OptionFilterable]].
    */
   @inline implicit def closeable2OptionFilterable[T <: CloseableType](closeable: T): OptionFilterable[T] =
     new CloseableResource[T](closeable, {_.close()})
 
   @inline implicit class OptionStringExtensions(s: Option[String]) {
-    /** @see [[org.scommon.script.engine.core.StringUtil#isNoneOrEmpty(Option[String]))]] */
+    /** @see [[org.scommon.core.StringUtil#isNoneOrEmpty(Option[String]))]] */
     @inline def isNoneOrEmpty: Boolean = StringUtil.isNoneOrEmpty(s)
 
-    /** @see [[[org.scommon.script.engine.core.StringUtil#isNonEmpty(Option[String]))]]] */
+    /** @see [[[org.scommon.core.StringUtil#isNonEmpty(Option[String]))]]] */
     @inline def isNonEmpty: Boolean = StringUtil.isNonEmpty(s)
 
-    /** @see [[org.scommon.script.engine.core.StringUtil#checked(Option[String]))]] */
+    /** @see [[org.scommon.core.StringUtil#checked(Option[String]))]] */
     @inline def checked: String = StringUtil.checked(s)
   }
 
   @inline implicit class StringExtensions(s: String) {
-    /** @see [[org.scommon.script.engine.core.StringUtil#isNullOrEmpty(String)]] */
+    /** @see [[org.scommon.core.StringUtil#isNullOrEmpty(String)]] */
     @inline def isNullOrEmpty: Boolean = StringUtil.isNullOrEmpty(s)
 
-    /** @see [[org.scommon.script.engine.core.StringUtil#isNonEmpty(String)]] */
+    /** @see [[org.scommon.core.StringUtil#isNonEmpty(String)]] */
     @inline def isNonEmpty: Boolean = StringUtil.isNonEmpty(s)
 
-    /** @see [[org.scommon.script.engine.core.StringUtil#checked(String)]] */
+    /** @see [[org.scommon.core.StringUtil#checked(String)]] */
     @inline def checked: String = StringUtil.checked(s)
 
-    /** @see [[org.scommon.script.engine.core.StringUtil#toValidIdentifier(String)]] */
+    /** @see [[org.scommon.core.StringUtil#toValidIdentifier(String)]] */
     @inline def toValidIdentifier: String = StringUtil.toValidIdentifier(s)
   }
 }
