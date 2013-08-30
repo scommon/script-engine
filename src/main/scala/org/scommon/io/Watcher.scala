@@ -1,4 +1,4 @@
-package org.scommon.script.engine.core
+package org.scommon.io
 
 import java.io.File
 import java.nio.file._

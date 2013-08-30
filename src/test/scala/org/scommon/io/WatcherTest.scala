@@ -1,4 +1,4 @@
-package org.scommon.script.engine.core
+package org.scommon.io
 
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
